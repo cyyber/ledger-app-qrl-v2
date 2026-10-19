@@ -2,11 +2,15 @@ import pytest
 
 from Crypto.Hash import keccak
 from dilithium_py.ml_dsa import ML_DSA_87
+from ledgered.devices import Device
 from ragger.backend.interface import BackendInterface
 from ragger.error import ExceptionRAPDU
+from ragger.navigator import Navigator, NavIns, NavInsID
 from ragger.navigator.navigation_scenario import NavigateWithScenario
 
-from application_client.boilerplate_command_sender import BoilerplateCommandSender, CLA, InsType, Errors
+from application_client.boilerplate_command_sender import (
+    BoilerplateCommandSender, CLA, InsType, Errors, MAX_APDU_LEN,
+)
 
 # In this tests we check the behavior of the device when asked to sign a transaction
 
@@ -158,11 +162,74 @@ def _rlp_bytes(b: bytes) -> bytes:
     return _rlp_len(0x80, len(b)) + b
 
 
-def build_preimage(data: bytes) -> bytes:
-    """0x02 || rlp([chain_id, nonce, tip, fee_cap, gas, to, value, data, [], descriptor, ""])"""
+def build_preimage(data: bytes, access_list: bytes = b"\xc0") -> bytes:
+    """Build the 11-field preimage; access_list is an already RLP-encoded list."""
     payload = b"".join(_rlp_bytes(f) for f in (_CHAIN_ID, _NONCE, _GAS_TIP_CAP, _GAS_FEE_CAP, _GAS, _TO, _VALUE, data))
-    payload += b"\xc0" + _rlp_bytes(_DESCRIPTOR) + b"\x80"
+    payload += access_list + _rlp_bytes(_DESCRIPTOR) + b"\x80"
     return b"\x02" + _rlp_len(0xc0, len(payload)) + payload
+
+
+def enable_blind_signing(device: Device, navigator: Navigator) -> None:
+    """Enable the setting through the same UI a user must navigate."""
+    if device.is_nano:
+        for text in ("App settings", "Blind signing", "Back"):
+            navigator.navigate_until_text(
+                NavInsID.RIGHT_CLICK,
+                [NavInsID.BOTH_CLICK],
+                text=text,
+                screen_change_before_first_instruction=False,
+            )
+    else:
+        navigator.navigate(
+            [
+                NavInsID.USE_CASE_HOME_SETTINGS,
+                NavIns(NavInsID.TOUCH, (200, 113)),  # First setting: Blind signing.
+                NavInsID.USE_CASE_SETTINGS_MULTI_PAGE_EXIT,
+            ],
+            screen_change_before_first_instruction=False,
+        )
+
+
+@pytest.mark.parametrize("payload_field", ["calldata", "access_list"])
+def test_sign_tx_large_payload(backend: BackendInterface,
+                               device: Device,
+                               navigator: Navigator,
+                               scenario_navigator: NavigateWithScenario,
+                               payload_field: str) -> None:
+    """Sign a multi-APDU transaction and verify every streamed byte was hashed."""
+    client = BoilerplateCommandSender(backend)
+    path = "m/44'/238'/0'/0/0"
+    enable_blind_signing(device, navigator)
+    client.get_public_key(path=path)
+    public_key = get_public_key_chunks(backend)
+    assert len(public_key) == PK_LEN
+
+    if payload_field == "calldata":
+        transaction = build_preimage(bytes(range(256)) * 12)
+    else:
+        # One 64-byte address with 96 distinct 32-byte storage keys. Both
+        # skipped fields must contribute to the sighash without being buffered.
+        keys = b"".join(_rlp_bytes(i.to_bytes(32, "big")) for i in range(96))
+        entry = _rlp_bytes(_TO) + _rlp_len(0xc0, len(keys)) + keys
+        entries = _rlp_len(0xc0, len(entry)) + entry
+        transaction = build_preimage(b"", _rlp_len(0xc0, len(entries)) + entries)
+    assert len(transaction) > 3000
+
+    with client.sign_tx(path=path, transaction=transaction):
+        scenario_navigator.review_approve_with_warning(do_comparison=False)
+
+    response = client.get_async_response()
+    assert response is not None
+    signature = get_signature_chunks(backend, response.data)
+    assert len(signature) == SIG_LEN
+    sighash = keccak.new(digest_bits=256, data=transaction).digest()
+    assert ML_DSA_87.verify(public_key, sighash, signature, ctx=SIGNING_CONTEXT)
+
+    # Change a byte in the skipped payload beyond the former 510-byte limit.
+    tampered = bytearray(transaction)
+    tampered[2 * MAX_APDU_LEN] ^= 1
+    tampered_hash = keccak.new(digest_bits=256, data=tampered).digest()
+    assert not ML_DSA_87.verify(public_key, tampered_hash, signature, ctx=SIGNING_CONTEXT)
 
 
 def test_preimage_builder_matches_reference() -> None:
