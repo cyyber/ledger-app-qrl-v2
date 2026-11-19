@@ -14,6 +14,8 @@
 
 #define ADDRESS_LENGTH 64
 #define MAX_FIELD_SIZE 32
+/** Maximum calldata prefix retained for operation decoders, independent of the ABI. */
+#define TX_CALLDATA_MAX_LEN 256u
 
 /**
  * Decoded fields of a QRL v2.0 type-2 transaction (sighash preimage).
@@ -35,12 +37,19 @@ typedef struct {
     uint8_t gas_len;
 
     uint8_t to[ADDRESS_LENGTH];
+    uint8_t to_len;  /// 0 for contract creation, ADDRESS_LENGTH for a recipient
 
     uint8_t value[MAX_FIELD_SIZE];
     uint8_t value_len;
 
     bool has_data;
     bool has_access_list;
+
+    uint32_t data_len;  /// full calldata length, including bytes beyond the retained prefix
+    /* Retain min(data_len, sizeof(data)) bytes. Decoders must check data_len
+     * before accessing arguments. The caller hashes every byte, including the
+     * remainder of calldata larger than this buffer. */
+    uint8_t data[TX_CALLDATA_MAX_LEN];
 
     uint8_t descriptor[3];
     uint8_t descriptor_len;
@@ -78,7 +87,17 @@ typedef enum {
     TX_STREAM_ERROR            /// malformed input, the state is sticky
 } tx_stream_status_e;
 
+/* Optional observer sees every calldata byte, including bytes beyond the prefix.
+ * Installed by trusted code after init; it does not replace RLP validation. */
+typedef void (*tx_data_observer_t)(void *context,
+                                   uint32_t offset,
+                                   uint32_t total,
+                                   const uint8_t *data,
+                                   size_t len);
+
 typedef struct {
+    tx_data_observer_t on_data;
+    void *observer_context;
     tx_field_e field;             /// field currently being received
     bool in_payload;              /// false: collecting the RLP header, true: consuming payload
     bool failed;                  /// set on the first error, never cleared
