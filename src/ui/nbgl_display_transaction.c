@@ -239,7 +239,12 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
         ADD_PAIR("To", g_to_address);
     }
     if (token->enabled) {
+#ifdef SCREEN_SIZE_WALLET
         ADD_PAIR("Token contract", g_token_contract);
+#else
+        // Nano cuts the middle out of the longer title once a page counter is added.
+        ADD_PAIR("Contract", g_token_contract);
+#endif
     }
     ADD_PAIR("Chain ID", g_chain_id);
     ADD_PAIR("Gas limit", g_gas_limit);
