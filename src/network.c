@@ -5,15 +5,20 @@ typedef struct {
     char name[NETWORK_NAME_MAX_LEN + 1];
 } network_t;
 
-#define NETWORK(id, text) \
-    _Static_assert(sizeof(text) > 1 && sizeof(text) <= NETWORK_NAME_MAX_LEN + 1, "bad name: " text);
-#include "networks.def"
-#undef NETWORK
-
+/* Known QRL v2.0 networks, by chain ID.
+ *
+ * The review screen shows "Network: <name> (<chain ID>)" for a chain ID listed
+ * here and the bare "Chain ID" for any other. Names are compiled into the app:
+ * the host can never supply or override them. To add or rename a network, edit
+ * this table and rebuild. Chain IDs must be unique, and a name is 1 to
+ * NETWORK_NAME_MAX_LEN characters; unit-tests/test_network.c checks both.
+ *
+ * Values follow go-qrl params/config.go (MainnetChainConfig, TestnetChainConfig,
+ * BetaNetChainConfig). */
 static const network_t NETWORKS[] = {
-#define NETWORK(id, text) {UINT64_C(id), text},
-#include "networks.def"
-#undef NETWORK
+    {.chain_id = 1, .name = "Mainnet"},
+    {.chain_id = 1337, .name = "Testnet"},
+    {.chain_id = 32382, .name = "BetaNet"},
 };
 
 const char *network_name(const uint8_t *chain_id, size_t chain_id_len) {
