@@ -328,8 +328,9 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
         pairs[count++].value = (text);          \
     } while (0)
     if (is_nft) {
-        ADD_PAIR(is_nft_transfer ? "From" : "Owner", g_from_address);
-        // An approved operator may move a token it does not hold itself.
+        // Only an operator grant is always made by the owner: an approved
+        // operator may move or approve a token it does not hold itself.
+        ADD_PAIR(nft->kind == NFT_CALL_APPROVE_ALL ? "Owner" : "From", g_from_address);
         if (is_nft_transfer && memcmp(nft->owner, G_context.address, ADDRESS_SIZE) != 0) {
             if (!format_checksummed_address(nft->owner,
                                             g_contract_values[NFT_VALUE_OWNER],
