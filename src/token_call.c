@@ -2,7 +2,7 @@
 
 #include <string.h>
 
-_Static_assert(TOKEN_CALL_CALLDATA_LEN <= TX_CALLDATA_MAX_LEN,
+_Static_assert(TOKEN_CALL_TRANSFER_FROM_CALLDATA_LEN <= TX_CALLDATA_MAX_LEN,
                "token calldata must fit in the retained transaction prefix");
 
 static bool all_zero(const uint8_t *data, size_t len) {
@@ -66,21 +66,24 @@ bool token_metadata_parse(const uint8_t *data,
 bool token_call_prepare(const zond_tx_t *tx, const token_metadata_t *metadata, token_call_t *out) {
     static const uint8_t transfer_selector[] = {0xa9, 0x05, 0x9c, 0xbb};
     static const uint8_t approve_selector[] = {0x09, 0x5e, 0xa7, 0xb3};
+    static const uint8_t transfer_from_selector[] = {0x23, 0xb8, 0x72, 0xdd};
     if (out == NULL) return false;
     memset(out, 0, sizeof(*out));
     if (tx == NULL || metadata == NULL || !metadata->verified || tx->chain_id_len == 0 ||
         tx->chain_id_len > MAX_FIELD_SIZE || tx->to_len != ADDRESS_LENGTH ||
-        tx->value_len > MAX_FIELD_SIZE || tx->data_len != TOKEN_CALL_CALLDATA_LEN ||
+        tx->value_len > MAX_FIELD_SIZE ||
+        (tx->data_len != TOKEN_CALL_CALLDATA_LEN &&
+         tx->data_len != TOKEN_CALL_TRANSFER_FROM_CALLDATA_LEN) ||
         tx->has_access_list || !all_zero(tx->value, tx->value_len) ||
         memcmp(tx->to, metadata->contract, ADDRESS_LENGTH) != 0 ||
         !all_zero(metadata->chain_id, MAX_FIELD_SIZE - tx->chain_id_len) ||
         memcmp(tx->chain_id,
                metadata->chain_id + MAX_FIELD_SIZE - tx->chain_id_len,
-               tx->chain_id_len) != 0 ||
-        !all_zero(tx->data + 4 + ADDRESS_LENGTH, MAX_FIELD_SIZE))
+               tx->chain_id_len) != 0)
         return false;
 
     token_call_kind_e kind;
+    size_t target_offset = 4;
     if (memcmp(tx->data, transfer_selector, sizeof(transfer_selector)) == 0) {
         kind = TOKEN_CALL_TRANSFER;
     } else if (memcmp(tx->data, approve_selector, sizeof(approve_selector)) == 0) {
@@ -88,14 +91,27 @@ bool token_call_prepare(const zond_tx_t *tx, const token_metadata_t *metadata, t
         // Transfer recipients retain the existing literal-address display policy.
         if (all_zero(tx->data + 4, ADDRESS_LENGTH)) return false;
         kind = TOKEN_CALL_APPROVE;
+    } else if (memcmp(tx->data, transfer_from_selector, sizeof(transfer_from_selector)) == 0) {
+        // The same selector is used by ERC-721. Only an issuer-authenticated
+        // fungible-token descriptor permits interpreting the last word as an amount.
+        kind = TOKEN_CALL_TRANSFER_FROM;
+        target_offset += ADDRESS_LENGTH;
     } else {
         return false;
     }
 
-    /* QRVM ABI: four-byte selector followed by two 64-byte words. uint256
+    const size_t expected_len = kind == TOKEN_CALL_TRANSFER_FROM
+                                    ? TOKEN_CALL_TRANSFER_FROM_CALLDATA_LEN
+                                    : TOKEN_CALL_CALLDATA_LEN;
+    const size_t amount_offset = target_offset + ADDRESS_LENGTH;
+    if (tx->data_len != expected_len || !all_zero(tx->data + amount_offset, MAX_FIELD_SIZE))
+        return false;
+
+    /* QRVM ABI: four-byte selector followed by 64-byte words. uint256
      * occupies the low 32 bytes of its word; its upper half must be zero. */
-    memcpy(out->target, tx->data + 4, ADDRESS_LENGTH);
-    memcpy(out->amount, tx->data + 4 + ADDRESS_LENGTH + MAX_FIELD_SIZE, MAX_FIELD_SIZE);
+    if (kind == TOKEN_CALL_TRANSFER_FROM) memcpy(out->source, tx->data + 4, ADDRESS_LENGTH);
+    memcpy(out->target, tx->data + target_offset, ADDRESS_LENGTH);
+    memcpy(out->amount, tx->data + amount_offset + MAX_FIELD_SIZE, MAX_FIELD_SIZE);
     out->kind = kind;
     return true;
 }

@@ -39,6 +39,7 @@
 #include "address.h"
 
 static char g_from_address[1 + ADDRESS_SIZE * 2 + 1];
+static char g_token_source[1 + ADDRESS_SIZE * 2 + 1];
 static char g_amount[TX_FORMAT_MAX_AMOUNT_LEN + TOKEN_SYMBOL_MAX + 2];
 static char g_to_address[1 + ADDRESS_SIZE * 2 + 1];
 static char g_token_contract[1 + ADDRESS_SIZE * 2 + 1];
@@ -49,9 +50,10 @@ static char g_gas_limit[21];
 static char g_gas_tip_cap[TX_FORMAT_MAX_AMOUNT_LEN + 5];
 static char g_tx_hash[65];
 
-// Maximum review fields: From/Owner, Amount/Spending limit, To/Spender or Operation, Token
-// contract, Chain ID, Gas limit, Priority fee / gas, Max fees, Nonce, Transaction hash.
-enum { MAX_REVIEW_PAIRS = 10 };
+// Maximum review fields: Sign with (transferFrom only), From/Owner, Amount/Spending limit,
+// To/Spender or Operation, Token contract, Chain ID, Gas limit, Priority fee / gas,
+// Max fees, Nonce, Transaction hash.
+enum { MAX_REVIEW_PAIRS = 11 };
 static nbgl_contentTagValue_t pairs[MAX_REVIEW_PAIRS];
 static nbgl_contentTagValueList_t pairList;
 
@@ -153,6 +155,7 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
     const token_metadata_t *metadata = &G_context.tx_info.token_metadata;
     const bool is_token = token->kind != TOKEN_CALL_NONE;
     const bool is_approval = token->kind == TOKEN_CALL_APPROVE;
+    const bool is_transfer_from = token->kind == TOKEN_CALL_TRANSFER_FROM;
     const bool is_unlimited = token_call_is_unlimited_approval(token);
     const bool is_revocation = token_call_is_approval_revocation(token);
     const char *review_title = "Review transaction\n";
@@ -196,6 +199,10 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
     // Format from address
     memset(g_from_address, 0, sizeof(g_from_address));
     if (!format_checksummed_address(G_context.address, g_from_address, sizeof(g_from_address))) {
+        return abort_display(SW_DISPLAY_ADDRESS_FAIL);
+    }
+    if (is_transfer_from &&
+        !format_checksummed_address(token->source, g_token_source, sizeof(g_token_source))) {
         return abort_display(SW_DISPLAY_ADDRESS_FAIL);
     }
 
@@ -264,7 +271,12 @@ int ui_display_transaction_bs_choice(bool is_blind_signed, zond_tx_t *tx) {
         pairs[count].item = (label);            \
         pairs[count++].value = (text);          \
     } while (0)
-    ADD_PAIR(is_approval ? "Owner" : "From", g_from_address);
+    if (is_transfer_from) {
+        ADD_PAIR("Sign with", g_from_address);
+        ADD_PAIR("From", g_token_source);
+    } else {
+        ADD_PAIR(is_approval ? "Owner" : "From", g_from_address);
+    }
     ADD_PAIR(is_approval ? "Spending limit" : "Amount", g_amount);
     if (is_contract_creation) {
         ADD_PAIR("Operation", "Create contract");
