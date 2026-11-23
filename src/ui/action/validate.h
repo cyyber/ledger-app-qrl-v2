@@ -15,7 +15,14 @@ void validate_pubkey(bool choice);
  * Action for transaction information validation.
  *
  * @param[in] choice
- *   User choice (either approved or rejectd).
+ *   User choice (either approved or rejected).
  *
+ * @return true only after signing and signature self-verification succeed.
  */
-void validate_transaction(bool choice);
+bool validate_transaction(bool choice);
+
+/** Sign and verify the reviewed personal-message digest; return true on success. */
+bool validate_personal_message(bool choice);
+
+/** Sign only the device-computed digest of the approved structured message. */
+bool validate_typed_data(bool choice);

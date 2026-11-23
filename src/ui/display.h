@@ -1,6 +1,7 @@
 #pragma once
 
 #include <stdbool.h>  // bool
+#include <stddef.h>   // size_t
 #include "tx_types.h"
 
 #if defined(TARGET_NANOX) || defined(TARGET_NANOS2)
@@ -25,6 +26,15 @@ typedef void (*action_validate_cb)(bool);
  *
  */
 int ui_display_address(void);
+
+/** Display the account, byte length and all personal-message text for approval. */
+int ui_display_personal_message(void);
+
+/** Display all QRL typed-data fields and domain context before signing. */
+int ui_display_typed_data(void);
+
+/** Measure a typed-data fragment fitting one page without a More view. */
+size_t ui_typed_data_page_length(const char *label, char *text);
 
 /**
  * Display transaction information on the device and ask confirmation to sign.

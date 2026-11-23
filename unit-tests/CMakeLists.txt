@@ -65,3 +65,106 @@ add_executable(test_tx_stream test_tx_stream.c)
 add_library(tx_stream ../src/tx_stream.c)
 target_link_libraries(test_tx_stream PUBLIC tx_stream cmocka gcov)
 add_test(test_tx_stream test_tx_stream)
+
+add_executable(test_validate_transaction
+    test_validate_transaction.c
+    ../src/ui/action/validate.c
+    ../src/helper/request_context.c)
+target_include_directories(test_validate_transaction BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_link_libraries(test_validate_transaction PRIVATE cmocka gcov)
+add_test(test_validate_transaction test_validate_transaction)
+
+add_executable(test_transaction_review
+    test_transaction_review.c
+    ../src/ui/nbgl_display_transaction.c
+    ../src/ui/action/validate.c
+    ../src/helper/request_context.c)
+target_include_directories(test_transaction_review BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_compile_definitions(test_transaction_review PRIVATE TARGET_FLEX SCREEN_SIZE_WALLET)
+set_property(TARGET test_transaction_review APPEND_STRING PROPERTY LINK_FLAGS
+    " -Wl,--wrap=format_checksummed_address,--wrap=format_qrl_amount,--wrap=multiply_uint8_arrays,--wrap=uint8_array_to_decimal")
+target_link_libraries(test_transaction_review PRIVATE tx_format address_format hashes cmocka gcov)
+add_test(test_transaction_review test_transaction_review)
+
+add_library(personal_message ../src/personal_message.c)
+add_executable(test_personal_message test_personal_message.c)
+target_link_libraries(test_personal_message PUBLIC personal_message hashes cmocka gcov)
+add_test(test_personal_message test_personal_message)
+
+# Exercise the on-demand review cache, including backwards/indexed retrieval.
+add_executable(test_personal_message_review
+    test_personal_message_review.c
+    ../src/ui/nbgl_display_personal_message.c)
+target_include_directories(test_personal_message_review BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_compile_definitions(test_personal_message_review PRIVATE TARGET_FLEX SCREEN_SIZE_WALLET)
+target_link_libraries(test_personal_message_review PRIVATE personal_message address_format hashes cmocka gcov)
+add_test(test_personal_message_review test_personal_message_review)
+
+add_executable(test_personal_message_review_nano
+    test_personal_message_review.c
+    ../src/ui/nbgl_display_personal_message.c)
+target_include_directories(test_personal_message_review_nano BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_compile_definitions(test_personal_message_review_nano PRIVATE TARGET_NANOX)
+target_link_libraries(test_personal_message_review_nano PRIVATE personal_message address_format hashes cmocka gcov)
+add_test(test_personal_message_review_nano test_personal_message_review_nano)
+
+add_library(typed_data ../src/typed_data.c)
+add_executable(test_typed_data test_typed_data.c)
+target_compile_definitions(test_typed_data PRIVATE
+    TYPED_DATA_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/typed_data.txt")
+target_link_libraries(test_typed_data PUBLIC typed_data address_format hashes cmocka gcov)
+add_test(test_typed_data test_typed_data)
+
+add_executable(test_typed_storage test_typed_storage.c ../src/typed_data_storage.c)
+target_include_directories(test_typed_storage BEFORE PRIVATE mocks)
+target_compile_definitions(test_typed_storage PRIVATE
+    TYPED_DATA_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/typed_data.txt")
+target_link_libraries(test_typed_storage PUBLIC typed_data address_format hashes cmocka gcov)
+add_test(test_typed_storage test_typed_storage)
+
+foreach(device touch nano)
+    set(review_target test_typed_data_review_${device})
+    add_executable(${review_target}
+        test_typed_data_review.c
+        ../src/typed_data_storage.c
+        ../src/ui/nbgl_display_typed_data.c)
+    target_include_directories(${review_target} BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+    target_compile_definitions(${review_target} PRIVATE
+        TYPED_DATA_VECTOR_FILE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/typed_data.txt")
+    if(device STREQUAL "touch")
+        target_compile_definitions(${review_target} PRIVATE TARGET_FLEX SCREEN_SIZE_WALLET)
+    else()
+        target_compile_definitions(${review_target} PRIVATE TARGET_NANOX)
+    endif()
+    target_link_libraries(${review_target} PRIVATE typed_data address_format hashes cmocka gcov)
+    set_property(TARGET ${review_target} APPEND_STRING PROPERTY LINK_FLAGS
+        " -Wl,--wrap=format_checksummed_address,--wrap=typed_data_store_ui")
+    add_test(${review_target} ${review_target})
+endforeach()
+
+# Exercise real crypto code with mocked Ledger syscalls and observed erasure.
+add_executable(test_crypto_cleanup
+    test_crypto_cleanup.c
+    ../src/address.c
+    ../src/mldsa87/mldsa87.c
+    ../src/mldsa87/sign.c
+    ../src/mldsa87/poly.c
+    ../src/mldsa87/polyvec.c
+    ../src/mldsa87/ntt.c
+    ../src/mldsa87/reduce.c
+    ../src/mldsa87/rounding.c
+    ../src/mldsa87/constant.c
+    ../src/mldsa87/utils.c
+    ../src/mldsa87/keccakf.c
+    ../src/mldsa87/shake128.c
+    ../src/mldsa87/shake256.c)
+target_include_directories(test_crypto_cleanup BEFORE PRIVATE mocks)
+target_compile_definitions(test_crypto_cleanup PRIVATE explicit_bzero=test_explicit_bzero)
+set_property(TARGET test_crypto_cleanup APPEND_STRING PROPERTY LINK_FLAGS
+    " -Wl,--wrap=shake256_absorb,--wrap=shake256_squeeze,--wrap=poly_vec_l_uniform_eta,--wrap=poly_vec_k_uniform_eta,--wrap=poly_vec_l_chk_norm")
+target_link_libraries(test_crypto_cleanup PRIVATE cmocka gcov)
+add_test(test_crypto_cleanup test_crypto_cleanup)
+
+# These transaction-only callback tests have no staged typed-data storage.
+target_sources(test_validate_transaction PRIVATE mocks/typed_data_storage.c)
+target_sources(test_transaction_review PRIVATE mocks/typed_data_storage.c)

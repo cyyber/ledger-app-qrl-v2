@@ -74,6 +74,13 @@ VARIANT_VALUES = QRL
 # Enabling DEBUG flag will enable PRINTF and disable optimizations
 #DEBUG = 1
 
+# ML-DSA-87 uses about 19500 bytes of application stack in emulator measurements.
+# Fail linking if static buffers leave less than this budget. Hardware syscall
+# overhead still needs validation on a physical Nano X.
+# The typed-data parser has a separate workspace cap in src/typed_data.h;
+# remeasure recursive parsing before increasing that cap or the parser limits.
+APP_STACK_MIN_SIZE = 20500
+
 ########################################
 #     Application custom permissions   #
 ########################################
