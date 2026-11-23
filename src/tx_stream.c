@@ -140,6 +140,7 @@ static bool field_begin(tx_stream_t *s, zond_tx_t *tx, bool is_list, uint32_t le
                 return false;
             }
             tx->has_data = (len != 0);
+            tx->data_len = len;
             break;
         case TX_F_ACCESS_LIST:
             if (!is_list) {
@@ -210,9 +211,16 @@ static bool field_store(const tx_stream_t *s, zond_tx_t *tx, const uint8_t *src,
         case TX_F_DESCRIPTOR:
             memcpy(tx->descriptor + pos, src, n);
             break;
+        case TX_F_DATA:
+            if (s->on_data != NULL) s->on_data(s->observer_context, pos, s->field_len, src, n);
+            if (pos < sizeof(tx->data)) {
+                uint32_t retained = sizeof(tx->data) - pos;
+                if (retained > n) retained = n;
+                memcpy(tx->data + pos, src, retained);
+            }
+            break;
         default:
-            // TX_F_DATA, TX_F_ACCESS_LIST, TX_F_EXTRA_PARAMS: hashed by the
-            // caller, not retained
+            // TX_F_ACCESS_LIST and TX_F_EXTRA_PARAMS: hashed by the caller.
             break;
     }
     return true;
@@ -227,7 +235,6 @@ static bool field_end(tx_stream_t *s, zond_tx_t *tx) {
 
     switch (s->field) {
         case TX_F_LIST:
-        case TX_F_TO:
         case TX_F_DATA:
         case TX_F_ACCESS_LIST:
             break;
@@ -245,6 +252,9 @@ static bool field_end(tx_stream_t *s, zond_tx_t *tx) {
             break;
         case TX_F_GAS:
             tx->gas_len = len8;
+            break;
+        case TX_F_TO:
+            tx->to_len = len8;
             break;
         case TX_F_VALUE:
             tx->value_len = len8;

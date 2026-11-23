@@ -65,3 +65,143 @@ add_executable(test_tx_stream test_tx_stream.c)
 add_library(tx_stream ../src/tx_stream.c)
 target_link_libraries(test_tx_stream PUBLIC tx_stream cmocka gcov)
 add_test(test_tx_stream test_tx_stream)
+
+add_executable(test_validate_transaction
+    test_validate_transaction.c
+    ../src/ui/action/validate.c
+    ../src/helper/request_context.c)
+target_include_directories(test_validate_transaction BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_link_libraries(test_validate_transaction PRIVATE cmocka gcov)
+add_test(test_validate_transaction test_validate_transaction)
+
+add_executable(test_transaction_review
+    test_transaction_review.c
+    ../src/ui/nbgl_display_transaction.c
+    ../src/ui/action/validate.c
+    ../src/helper/request_context.c)
+target_include_directories(test_transaction_review BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_compile_definitions(test_transaction_review PRIVATE TARGET_FLEX SCREEN_SIZE_WALLET)
+set_property(TARGET test_transaction_review APPEND_STRING PROPERTY LINK_FLAGS
+    " -Wl,--wrap=format_checksummed_address,--wrap=format_qrl_amount,--wrap=multiply_uint8_arrays,--wrap=uint8_array_to_decimal")
+target_link_libraries(test_transaction_review PRIVATE tx_format address_format hashes cmocka gcov)
+add_test(test_transaction_review test_transaction_review)
+
+add_library(token_call ../src/token_call.c)
+add_executable(test_token_transfer test_token_transfer.c)
+target_link_libraries(test_token_transfer PUBLIC token_call tx_stream tx_format cmocka gcov)
+add_test(test_token_transfer test_token_transfer)
+
+# Validate the real Makefile's issuer configuration using only Python's stdlib.
+find_program(TOKEN_METADATA_TEST_PYTHON NAMES python3)
+if(NOT TOKEN_METADATA_TEST_PYTHON)
+    message(FATAL_ERROR "Python 3 is required for token metadata key tests")
+endif()
+add_test(NAME test_token_metadata_key
+         COMMAND ${TOKEN_METADATA_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test_token_metadata_key.py)
+add_test(NAME test_transaction_builder
+         COMMAND ${TOKEN_METADATA_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test_transaction_builder.py)
+
+# Exercise real crypto code with mocked Ledger syscalls and observed erasure.
+add_executable(test_crypto_cleanup
+    test_crypto_cleanup.c
+    ../src/address.c
+    ../src/mldsa87/mldsa87.c
+    ../src/mldsa87/sign.c
+    ../src/mldsa87/poly.c
+    ../src/mldsa87/polyvec.c
+    ../src/mldsa87/ntt.c
+    ../src/mldsa87/reduce.c
+    ../src/mldsa87/rounding.c
+    ../src/mldsa87/constant.c
+    ../src/mldsa87/utils.c
+    ../src/mldsa87/keccakf.c
+    ../src/mldsa87/shake128.c
+    ../src/mldsa87/shake256.c)
+target_include_directories(test_crypto_cleanup BEFORE PRIVATE mocks)
+target_compile_definitions(test_crypto_cleanup PRIVATE explicit_bzero=test_explicit_bzero)
+set_property(TARGET test_crypto_cleanup APPEND_STRING PROPERTY LINK_FLAGS
+    " -Wl,--wrap=shake256_absorb,--wrap=shake256_squeeze,--wrap=poly_vec_l_uniform_eta,--wrap=poly_vec_k_uniform_eta,--wrap=poly_vec_l_chk_norm")
+target_link_libraries(test_crypto_cleanup PRIVATE cmocka gcov)
+add_test(test_crypto_cleanup test_crypto_cleanup)
+
+# Approval review uses token-call classification helpers.
+target_link_libraries(test_transaction_review PRIVATE token_call)
+
+add_library(contract_call ../src/contract_call.c)
+add_executable(test_contract_call test_contract_call.c)
+target_link_libraries(test_contract_call PRIVATE contract_call cmocka gcov)
+add_test(test_contract_call test_contract_call)
+target_link_libraries(test_transaction_review PRIVATE contract_call)
+add_test(NAME test_contract_descriptor_key
+         COMMAND ${TOKEN_METADATA_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test_contract_descriptor_key.py)
+
+# The contract argument labels use a different rendering policy on Nano.
+add_executable(test_transaction_review_nano
+    test_transaction_review.c
+    ../src/ui/nbgl_display_transaction.c
+    ../src/ui/action/validate.c
+    ../src/helper/request_context.c)
+target_include_directories(test_transaction_review_nano BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_compile_definitions(test_transaction_review_nano PRIVATE TARGET_NANOS2)
+set_property(TARGET test_transaction_review_nano APPEND_STRING PROPERTY LINK_FLAGS
+    " -Wl,--wrap=format_checksummed_address,--wrap=format_qrl_amount,--wrap=multiply_uint8_arrays,--wrap=uint8_array_to_decimal")
+target_link_libraries(test_transaction_review_nano PRIVATE tx_format address_format hashes token_call contract_call cmocka gcov)
+add_test(test_transaction_review_nano test_transaction_review_nano)
+
+add_executable(test_signed_metadata test_signed_metadata.c ../src/signed_metadata.c)
+target_include_directories(test_signed_metadata BEFORE PRIVATE mocks/metadata)
+target_link_libraries(test_signed_metadata PRIVATE cmocka gcov)
+add_test(test_signed_metadata test_signed_metadata)
+
+find_package(OpenSSL REQUIRED)
+add_library(staking_deposit ../src/staking_deposit.c ../src/staking_profile.c)
+target_compile_definitions(staking_deposit PRIVATE STAKING_DEPOSIT_TEST_PROFILE)
+add_executable(test_staking_deposit test_staking_deposit.c)
+target_link_libraries(test_staking_deposit PRIVATE staking_deposit tx_stream cmocka gcov OpenSSL::Crypto)
+target_compile_definitions(test_staking_deposit PRIVATE STAKING_FIXTURE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/staking_deposit.bin" STAKING_PREIMAGE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/staking_preimage.bin")
+add_test(test_staking_deposit test_staking_deposit)
+
+foreach(review_target test_transaction_review test_transaction_review_nano)
+    target_compile_definitions(${review_target} PRIVATE HAVE_STAKING_DEPOSIT
+        STAKING_PREIMAGE="${CMAKE_CURRENT_SOURCE_DIR}/fixtures/staking_preimage.bin")
+    target_link_libraries(${review_target} PRIVATE staking_deposit tx_stream OpenSSL::Crypto)
+endforeach()
+
+# The default firmware has no staking support: keep its review screen covered too.
+foreach(review_variant "" "_nano")
+    set(review_target test_transaction_review${review_variant}_default)
+    add_executable(${review_target}
+        test_transaction_review.c
+        ../src/ui/nbgl_display_transaction.c
+        ../src/ui/action/validate.c
+        ../src/helper/request_context.c)
+    target_include_directories(${review_target} BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+    set_property(TARGET ${review_target} APPEND_STRING PROPERTY LINK_FLAGS
+        " -Wl,--wrap=format_checksummed_address,--wrap=format_qrl_amount,--wrap=multiply_uint8_arrays,--wrap=uint8_array_to_decimal")
+    target_link_libraries(${review_target} PRIVATE
+        tx_format address_format hashes token_call contract_call tx_stream cmocka gcov)
+    add_test(${review_target} ${review_target})
+endforeach()
+target_compile_definitions(test_transaction_review_default PRIVATE TARGET_FLEX SCREEN_SIZE_WALLET)
+target_compile_definitions(test_transaction_review_nano_default PRIVATE TARGET_NANOS2)
+
+add_test(NAME test_staking_profile
+         COMMAND ${TOKEN_METADATA_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/test_staking_profile.py)
+
+# Exercise the production matcher with a nonzero high chain byte, unlike chain 1
+# in STAKING_DEPOSIT_TEST_PROFILE. Generate the actual firmware initializer.
+string(REPEAT "42" 64 STAKING_TARGET_TEST_CONTRACT)
+execute_process(
+    COMMAND ${TOKEN_METADATA_TEST_PYTHON} ${CMAKE_CURRENT_SOURCE_DIR}/../tools/staking_profile.py
+            257 ${STAKING_TARGET_TEST_CONTRACT}
+    OUTPUT_VARIABLE STAKING_TARGET_TEST_PROFILE
+    OUTPUT_STRIP_TRAILING_WHITESPACE
+    RESULT_VARIABLE STAKING_TARGET_TEST_RESULT)
+if(NOT STAKING_TARGET_TEST_RESULT EQUAL 0)
+    message(FATAL_ERROR "Cannot generate staking target test profile")
+endif()
+add_executable(test_staking_target test_staking_target.c ../src/staking_profile.c)
+target_compile_definitions(test_staking_target PRIVATE
+    STAKING_DEPOSIT_PROFILE_BYTES=${STAKING_TARGET_TEST_PROFILE})
+target_link_libraries(test_staking_target PRIVATE cmocka gcov)
+add_test(test_staking_target test_staking_target)
