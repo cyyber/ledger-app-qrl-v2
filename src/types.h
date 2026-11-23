@@ -8,6 +8,7 @@
 #include "constants.h"
 #include "constant.h"
 #include "tx_types.h"
+#include "token_call.h"
 #include "keccak256.h"  // keccak256_ctx
 
 /**
@@ -18,15 +19,17 @@ typedef enum {
     GET_APP_NAME = 0x04,    /// name of the application
     GET_PUBLIC_KEY = 0x05,  /// public key of corresponding BIP32 path
     SIGN_TX = 0x06,         /// sign transaction with BIP32 path
-    VERIFY_MSG = 0x07       /// verify message with BIP32 path
+    VERIFY_MSG = 0x07,      /// verify message with BIP32 path
+    PROVIDE_TOKEN_METADATA = 0x0A
 } command_e;
 /**
  * Enumeration with parsing state.
  */
 typedef enum {
-    STATE_NONE,     /// No state
-    STATE_PARSED,   /// Transaction data parsed
-    STATE_APPROVED  /// Transaction data approved
+    STATE_NONE,       /// No state
+    STATE_RECEIVING,  /// Validated signing path, receiving transaction data
+    STATE_PARSED,     /// Transaction data parsed
+    STATE_APPROVED    /// Transaction data approved
 } state_e;
 
 /**
@@ -50,10 +53,12 @@ typedef struct {
  * Structure for transaction information context.
  */
 typedef struct {
-    tx_stream_t stream;      /// streaming RLP parser position, kept between APDUs
-    keccak256_ctx hash_ctx;  /// Keccak-256 of the raw bytes, fed chunk by chunk
-    uint8_t m_hash[32];      /// message hash digest
-    zond_tx_t tx_data;       /// decoded fields for display
+    tx_stream_t stream;               /// streaming RLP parser position, kept between APDUs
+    keccak256_ctx hash_ctx;           /// Keccak-256 of the raw bytes, fed chunk by chunk
+    uint8_t m_hash[32];               /// message hash digest
+    zond_tx_t tx_data;                /// decoded fields for display
+    token_metadata_t token_metadata;  /// authenticated for this signing session only
+    token_call_t token_call;
 } transaction_ctx_t;
 
 /**
