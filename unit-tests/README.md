@@ -25,6 +25,28 @@ and run tests with
 CTEST_OUTPUT_ON_FAILURE=1 make -C build test
 ```
 
+`test_validate_transaction` exercises the real transaction approval callback
+with mocked signing and verification. It checks request/state guards, full
+context erasure on rejection or failure, and export only after successful
+self-verification, including when an earlier signature export was unfinished.
+The device regression tests in `tests/test_sign_cmd.py` also reject stale
+signature export after a new first block and after receiving partial data.
+The shared request reset is checked for clearing the persistent export flag
+after cancellation/restart, preserving settings and buffers, and avoiding NVM
+writes when the flag is already clear.
+
+`test_transaction_review` exercises the real review and approval callbacks with
+injected address-derivation, formatting, signing and verification failures.
+It checks that failed preparation clears the session and returns to the home
+screen, and that clear/blind reviews show a failure instead of a signed status
+when signing or self-verification fails.
+
+`test_app_configuration` exercises the real dispatcher and read-only handler
+with all eight combinations of settings, invalid APDU arguments, and every
+request state. It checks that the request and NVM remain unchanged and that
+`GET_VERSION` retains its response format. `test_app_configuration_client`
+checks the versioned Python decoder without an emulator or external packages.
+
 ## Generate code coverage
 
 Just execute in `unit-tests` folder

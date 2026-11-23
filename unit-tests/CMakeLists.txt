@@ -65,3 +65,67 @@ add_executable(test_tx_stream test_tx_stream.c)
 add_library(tx_stream ../src/tx_stream.c)
 target_link_libraries(test_tx_stream PUBLIC tx_stream cmocka gcov)
 add_test(test_tx_stream test_tx_stream)
+
+add_executable(test_validate_transaction
+    test_validate_transaction.c
+    ../src/ui/action/validate.c
+    ../src/helper/request_context.c)
+target_include_directories(test_validate_transaction BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_link_libraries(test_validate_transaction PRIVATE cmocka gcov)
+add_test(test_validate_transaction test_validate_transaction)
+
+add_executable(test_transaction_review
+    test_transaction_review.c
+    ../src/ui/nbgl_display_transaction.c
+    ../src/ui/action/validate.c
+    ../src/helper/request_context.c)
+target_include_directories(test_transaction_review BEFORE PRIVATE mocks ../src/helper ../src/ui/action)
+target_compile_definitions(test_transaction_review PRIVATE TARGET_FLEX SCREEN_SIZE_WALLET)
+set_property(TARGET test_transaction_review APPEND_STRING PROPERTY LINK_FLAGS
+    " -Wl,--wrap=format_checksummed_address,--wrap=format_qrl_amount,--wrap=multiply_uint8_arrays,--wrap=uint8_array_to_decimal")
+target_link_libraries(test_transaction_review PRIVATE tx_format address_format hashes cmocka gcov)
+add_test(test_transaction_review test_transaction_review)
+
+# Exercise real crypto code with mocked Ledger syscalls and observed erasure.
+add_executable(test_crypto_cleanup
+    test_crypto_cleanup.c
+    ../src/address.c
+    ../src/mldsa87/mldsa87.c
+    ../src/mldsa87/sign.c
+    ../src/mldsa87/poly.c
+    ../src/mldsa87/polyvec.c
+    ../src/mldsa87/ntt.c
+    ../src/mldsa87/reduce.c
+    ../src/mldsa87/rounding.c
+    ../src/mldsa87/constant.c
+    ../src/mldsa87/utils.c
+    ../src/mldsa87/keccakf.c
+    ../src/mldsa87/shake128.c
+    ../src/mldsa87/shake256.c)
+target_include_directories(test_crypto_cleanup BEFORE PRIVATE mocks)
+target_compile_definitions(test_crypto_cleanup PRIVATE explicit_bzero=test_explicit_bzero)
+set_property(TARGET test_crypto_cleanup APPEND_STRING PROPERTY LINK_FLAGS
+    " -Wl,--wrap=shake256_absorb,--wrap=shake256_squeeze,--wrap=poly_vec_l_uniform_eta,--wrap=poly_vec_k_uniform_eta,--wrap=poly_vec_l_chk_norm")
+target_link_libraries(test_crypto_cleanup PRIVATE cmocka gcov)
+add_test(test_crypto_cleanup test_crypto_cleanup)
+
+# Real APDU dispatch and configuration/version handlers with SDK-free I/O mocks.
+add_executable(test_app_configuration
+    test_app_configuration.c
+    ../src/apdu/dispatcher.c
+    ../src/handler/get_app_configuration.c
+    ../src/handler/get_version.c)
+target_include_directories(test_app_configuration BEFORE PRIVATE
+    mocks/configuration mocks ../src/apdu ../src/handler)
+target_compile_definitions(test_app_configuration PRIVATE
+    MAJOR_VERSION=23 MINOR_VERSION=45 PATCH_VERSION=67)
+target_link_libraries(test_app_configuration PRIVATE cmocka gcov)
+add_test(test_app_configuration test_app_configuration)
+
+find_program(APP_CONFIGURATION_TEST_PYTHON NAMES python3)
+if(NOT APP_CONFIGURATION_TEST_PYTHON)
+    message(FATAL_ERROR "Python 3 is required for application configuration client tests")
+endif()
+add_test(NAME test_app_configuration_client
+    COMMAND ${APP_CONFIGURATION_TEST_PYTHON}
+            ${CMAKE_CURRENT_SOURCE_DIR}/test_app_configuration_client.py)

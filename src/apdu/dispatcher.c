@@ -29,6 +29,7 @@
 #include "sw.h"
 #include "get_version.h"
 #include "get_app_name.h"
+#include "get_app_configuration.h"
 #include "get_public_key.h"
 #include "sign_tx.h"
 
@@ -54,6 +55,14 @@ int apdu_dispatcher(const command_t *cmd) {
             }
 
             return handler_get_app_name();
+        case GET_APP_CONFIGURATION:
+            if (cmd->p1 != 0 || cmd->p2 != 0) {
+                return io_send_sw(SW_WRONG_P1P2);
+            }
+            if (cmd->lc != 0) {
+                return io_send_sw(SW_WRONG_DATA_LENGTH);
+            }
+            return handler_get_app_configuration();
         case GET_PUBLIC_KEY:
             // P2 = 0: Return address (with derivation path in data)
             // P2 = 1-11: Return public key chunk (P2-1 is chunk index 0-10)
@@ -76,15 +85,7 @@ int apdu_dispatcher(const command_t *cmd) {
 
             return handler_get_public_key(&buf, (bool) cmd->p1);
         case SIGN_TX:
-            if ((cmd->p1 != DATA_FIRST && cmd->p1 != DATA_MORE && cmd->p1 != DATA_LAST) ||
-                cmd->p2 > 17) {
-                return io_send_sw(SW_WRONG_P1P2);
-            }
-
-            if (!cmd->data && cmd->p2 == 0) {
-                return io_send_sw(SW_WRONG_DATA_LENGTH);
-            }
-
+            // The handler also aborts the session on invalid or empty commands.
             buf.ptr = cmd->data;
             buf.size = cmd->lc;
             buf.offset = 0;

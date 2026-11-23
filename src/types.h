@@ -14,19 +14,21 @@
  * Enumeration with expected INS of APDU commands.
  */
 typedef enum {
-    GET_VERSION = 0x03,     /// version of the application
-    GET_APP_NAME = 0x04,    /// name of the application
-    GET_PUBLIC_KEY = 0x05,  /// public key of corresponding BIP32 path
-    SIGN_TX = 0x06,         /// sign transaction with BIP32 path
-    VERIFY_MSG = 0x07       /// verify message with BIP32 path
+    GET_VERSION = 0x03,           /// version of the application
+    GET_APP_NAME = 0x04,          /// name of the application
+    GET_PUBLIC_KEY = 0x05,        /// public key of corresponding BIP32 path
+    SIGN_TX = 0x06,               /// sign transaction with BIP32 path
+    VERIFY_MSG = 0x07,            /// verify message with BIP32 path
+    GET_APP_CONFIGURATION = 0x0E  /// read current settings and application version
 } command_e;
 /**
  * Enumeration with parsing state.
  */
 typedef enum {
-    STATE_NONE,     /// No state
-    STATE_PARSED,   /// Transaction data parsed
-    STATE_APPROVED  /// Transaction data approved
+    STATE_NONE,       /// No state
+    STATE_RECEIVING,  /// Validated signing path, receiving transaction data
+    STATE_PARSED,     /// Transaction data parsed
+    STATE_APPROVED    /// Transaction data approved
 } state_e;
 
 /**
