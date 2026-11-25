@@ -7,6 +7,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Token transfers (`transfer(address,uint256)`) are clear-signed with the amount, symbol and recipient when the host provides issuer-signed token metadata through the new `PROVIDE_TOKEN_METADATA` command (`INS 0x0A`). No metadata issuer is configured by default; one is set at build time with `TOKEN_METADATA_PUBLIC_KEY`; see `APP_SPECIFICATION.md`
+- Token spending approvals (`approve(address,uint256)`) are clear-signed with the spending limit and the spender, using the same issuer-signed token metadata. A zero limit is reviewed as a revocation and the maximum limit as `Unlimited` with an extra confirmation; see `APP_SPECIFICATION.md`
+- Contract calls with one to three static arguments (address, uint256 or bool) are clear-signed with an operation name and argument labels when the host provides an issuer-signed descriptor through the new `PROVIDE_CONTRACT_DESCRIPTOR` command (`INS 0x0B`). No descriptor issuer is configured by default; one is set at build time with `CONTRACT_DESCRIPTOR_PUBLIC_KEY`; see `APP_SPECIFICATION.md`
+- NFT transfers and approvals are clear-signed with the collection name when the host provides issuer-signed collection metadata through the new `PROVIDE_NFT_METADATA` command (`INS 0x0D`); see `doc/TRANSACTION.md`
+
 ### Changed
 
 - The transaction is parsed and Keccak-hashed chunk by chunk as the SIGN_TX APDUs arrive (`src/tx_stream.c`) instead of being buffered and decoded at the end. The fixed 510-byte transaction limit is gone (only a 64 KiB sanity cap remains), so transactions with large calldata can be signed
@@ -16,6 +23,14 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 - `SW_WRONG_TX_LENGTH` (0xB004) is no longer emitted; oversized or malformed input fails with `SW_TX_PARSING_FAIL`
 - The whole-buffer RLP decoder (`src/mldsa87/rlp_decode.c`) and its unit test
+
+### Fixed
+
+- A SIGN_TX session becomes active only after the BIP32 path of the first block is validated, and it is discarded when the path, the transaction data or the command parameters are rejected. Continuing a discarded session returns `SW_BAD_STATE` (0xB007)
+- Signature chunks are exported only for the currently approved transaction, and only after the signature passed self-verification. An unfinished export of an earlier request no longer authorizes a new one, and the persistent export flag is cleared whenever a request is reset
+- First and continuation SIGN_TX blocks with a nonzero P2 are rejected with `SW_WRONG_P1P2`
+- A transaction with an empty `to` is reviewed as `Operation: Create contract` instead of a transfer to the zero address
+- The derived seed and the secret intermediate buffers of ML-DSA-87 signing and Keccak/SHAKE hashing are wiped after use, also when an operation fails
 
 ## [2.1.0] - 2023-10-06
 
