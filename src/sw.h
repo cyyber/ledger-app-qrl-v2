@@ -5,6 +5,34 @@
  */
 #define SW_OK 0x9000
 /**
+ * Invalid contract descriptor encoding or unsupported field definition.
+ */
+#define SW_CONTRACT_DESCRIPTOR_INVALID 0x6A80
+/**
+ * Contract descriptor signature authentication failed.
+ */
+#define SW_CONTRACT_DESCRIPTOR_UNTRUSTED 0x6982
+/**
+ * No trusted contract descriptor issuer configured in this build.
+ */
+#define SW_CONTRACT_DESCRIPTOR_NO_ISSUER 0x6A88
+/**
+ * Transaction does not match the authenticated descriptor/profile. No blind fallback.
+ */
+#define SW_CONTRACT_CALL_MISMATCH 0x6A89
+/**
+ * Status word for invalid token metadata format or field values.
+ */
+#define SW_TOKEN_METADATA_INVALID 0x6A80
+/**
+ * Status word for failed token metadata authentication.
+ */
+#define SW_TOKEN_METADATA_UNTRUSTED 0x6982
+/**
+ * Status word for no configured token metadata issuer.
+ */
+#define SW_TOKEN_METADATA_NO_ISSUER 0x6A88
+/**
  * Status word for denied by user.
  */
 #define SW_DENY 0x6985
