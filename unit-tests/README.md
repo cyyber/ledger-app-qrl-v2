@@ -25,6 +25,36 @@ and run tests with
 CTEST_OUTPUT_ON_FAILURE=1 make -C build test
 ```
 
+`test_validate_transaction` exercises the real transaction approval callback
+with mocked signing and verification. It checks request/state guards, full
+context erasure on rejection or failure, and export only after successful
+self-verification, including when an earlier signature export was unfinished.
+The device regression tests in `tests/test_sign_cmd.py` also reject stale
+signature export after a new first block and after receiving partial data.
+The shared request reset is checked for clearing the persistent export flag
+after cancellation/restart, preserving settings and buffers, and avoiding NVM
+writes when the flag is already clear.
+
+`test_transaction_review` exercises the real review and approval callbacks with
+injected address-derivation, formatting, signing and verification failures.
+It checks that failed preparation clears the session and returns to the home
+screen, and that clear/blind reviews show a failure instead of a signed status
+when signing or self-verification fails.
+
+`test_personal_message_review` exercises the production NBGL callback with a small
+reusable cache. It checks full message reconstruction, backwards/indexed retrieval,
+stale-session rejection, approval/rejection statuses and returning to the home
+screen before reporting review-preparation errors. A Nano target additionally
+checks that its entire message is passed as one value; the touch target exercises
+fallback when a candidate page would need details. The UI no longer reserves
+arrays for every fragment's label and tag/value pair.
+
+`test_personal_message` checks QRL SDK hash vectors, every streaming split,
+text/length limits and lossless conversion of the full message into review
+fragments, including the empty message and maximum newline count. Device tests
+in `tests/test_personal_message_cmd.py` additionally cover approval/rejection,
+ML-DSA verification, malformed APDUs and isolation from transaction sessions.
+
 ## Generate code coverage
 
 Just execute in `unit-tests` folder
